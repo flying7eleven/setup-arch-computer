@@ -1,0 +1,13 @@
+---
+- name: Update the package cache and upgrade installed packages...
+  become: yes
+  pacman: update_cache=yes upgrade=yes
+
+- name: Install some common tools required on every computer...
+  become: yes
+  pacman: name={{item}} state=latest
+  with_items:
+    - htop
+    - git
+    - vim
+    - ctags
