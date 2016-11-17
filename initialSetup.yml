@@ -10,5 +10,9 @@
     - name: new_hostname
       prompt: The new hostname for the system set up
       default: zockepeter
+    - name: root_password
+      prompt: The passwod used for the root user
+      confirm: yes
+      private: yes
   roles:
     - coreinstall
