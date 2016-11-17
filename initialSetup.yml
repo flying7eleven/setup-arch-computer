@@ -1,4 +1,14 @@
 ---
 - hosts: lenovo
+  vars_prompt:
+    - name: install_disk
+      prompt: Device on which Arch Linux should be installed
+      default: /dev/sda
+    - name: disk_fs
+      prompt: File system for all Linux data partitions
+      default: ext4
+    - name: new_hostname
+      prompt: The new hostname for the system set up
+      default: zockepeter
   roles:
-    - common
+    - coreinstall
