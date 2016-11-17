@@ -114,3 +114,34 @@
   become: yes
   lineinfile: dest=/mnt/etc/hosts state=present line="127.0.0.1 {{ new_hostname }}.local {{ new_hostname }}" create=yes
   tags: chroot
+
+- name: Install some packages required for system setup...
+  become: yes
+  command: arch-chroot /mnt pacman -S {{ item }} --no-confirm
+  with_items:
+    - vim
+    - grub
+    - intel-ucode
+  tags: chroot
+
+# TODO: add config steps for the RAM disk here
+
+- name: Creating the initial RAM disk...
+  become: yes
+  command: arch-chroot /mnt mkinitcpio -p linux
+  tags: chroot
+
+#- name: Set the password of the root user...
+#  become: yes
+#  command: arch-chroot /mnt 
+#  tags: chroot
+
+- name: Installing the bootloader...
+  become: yes
+  command: arch-chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot/EFI --bootloader-id=grub
+  tags: chroot
+
+- name: Generating the bootloader configuration...
+  become: yes
+  command: arch-chroot /mnt grub-mkconfig -o /boot/EFI/grub/grub.cfg
+  tags: chroot
