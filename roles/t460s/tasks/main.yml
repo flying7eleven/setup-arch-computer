@@ -1,0 +1,107 @@
+---
+- name: Install base packages from the core repositories...
+  become: yes
+  pacman: name={{ item }} state=latest
+  with_items:
+    - xf86-input-synaptics
+    - xf86-video-intel
+    - xorg-xbacklight
+    - acpi
+    - gnome-keyring
+    - networkmanager
+    - network-manager-applet
+    - notify-osd
+    - powertop
+    - rfkill
+    - ethtool
+#    - systemd-swap
+
+- name: Copying required files for the greeter...
+  become: yes
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: "files/powermanagement.sh", dest: "/usr/local/bin/powermanagement", mode: "0755" }
+    - { src: "files/lockScreenOnSleep.sh", dest: "/usr/lib/systemd/system-sleep/lockScreenOnSleep", mode: "0755" }
+
+- name: Ensure that the required services are enabled...
+  become: yes
+  systemd: enabled=yes state=started name={{ item }}
+  with_items:
+    - NetworkManager
+#    - systemd-swap
+
+- name: Copying touchpad configuration...
+  become: yes
+  template:
+    src: "{{ item }}.j2"
+    dest: "/etc/X11/xorg.conf.d/{{ item }}"
+  with_items:
+    - 20-intel.conf
+    - 70-synaptics.conf
+
+- name: Installing custom udev rules...
+  become: yes
+  template:
+    src: "udev_{{ item }}.rules.j2"
+    dest: "/etc/udev/rules.d/{{ item }}.rules"
+  with_items:
+    - pci_pm
+    - usb_pm
+    - sata_pm
+    - disable_wol
+    - bluetooth
+    - powermanagement
+
+- name: Reloading udev rules...
+  become: yes
+  shell: udevadm trigger
+
+- name: Installing some syctl configuration files...
+  become: yes
+  template:
+    src: "{{ item }}.j2"
+    dest: "/etc/sysctl.d/{{ item }}"
+  with_items:
+    - disable_watchdog.conf
+
+- name: Installing custom kernel module configurations...
+  become: yes
+  template:
+    src: "{{ item }}.j2"
+    dest: "/etc/modprobe.d/{{ item }}"
+  with_items:
+    - audio_powersave.conf
+    - iwlwifi.conf
+    - iwldvm.conf
+    - disable_webcam.conf
+
+#- name: Configuring systemd swap...
+#  become: yes
+#  ini_file:
+#    dest: /etc/systemd/swap.conf
+#    section: ""
+#    option: "{{ item.option }}"
+#    value: "{{ item.value }}"
+#    no_extra_spaces: yes
+#  with_items:
+#    - { option: "swapfu_enabled", value: "1" }
+
+- name: Configuring systemd logind...
+  become: yes
+  ini_file:
+    dest: /etc/systemd/logind.conf
+    section: "Login"
+    option: "{{ item.option }}"
+    value: "{{ item.value }}"
+    no_extra_spaces: yes
+  with_items:
+    - { option: "HoldoffTimeoutSec", value: "30s" }
+    - { option: "IdleAction", value: "suspend" }
+    - { option: "IdleActionSec", value: "2min" }
+    - { option: "HandleLidSwitch", value: "suspend" }
+    - { option: "HandleLidSwitchDocked", value: "ignore" }

@@ -1,0 +1,8 @@
+# blacklisted devices
+# ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="05c6", ATTR{idProduct}=="9205", GOTO="power_usb_rules_end"
+
+# ensable power safe for all devices
+ACTION=="add", SUBSYSTEM=="usb", TEST=="power/control", ATTR{power/control}="auto"
+
+# label for blacklisted devices
+LABEL="power_usb_rules_end"

@@ -1,0 +1,185 @@
+---
+- name: Create initial empty partitioning table...
+  become: yes
+  command: sgdisk -og {{ install_disk }}
+  tags: formatting
+
+- name: Create BIOS boot partition...
+  become: yes
+  command: sgdisk -n 1:0:+1M -c 1:"BIOS Boot Partition" -t 1:ef02 {{ install_disk }}
+  tags: formatting
+
+- name: Create EFI boot partition...
+  become: yes
+  command: sgdisk -n 2:0:+256M -c 2:"EFI System Partition" -t 2:ef00 {{ install_disk }}
+  tags: formatting
+
+- name: Create Linux boot partition...
+  become: yes
+  command: sgdisk -n 3:0:+256M -c 3:"Linux Boot Partition" -t 3:8300 {{ install_disk }}
+  tags: formatting
+
+- name: Create Linux data partition...
+  become: yes
+  command: sgdisk -n 4:0:0 -c 4:"Linux Data Partition" -t 4:8e00 {{ install_disk }}
+  tags: formatting
+
+- name: Defining facts about the partitions...
+  set_fact:
+    mbr_boot_partition: "{{ install_disk }}1"
+    efi_partition: "{{ install_disk }}2"
+    efi_partition_mnt: "/mnt/boot/EFI"
+    linux_boot_partition: "{{ install_disk }}3"
+    linux_boot_partition_mnt: "/mnt/boot"
+    root_partition: "{{ install_disk }}4"
+    root_partition_mnt: "/mnt"
+  tags:
+    - test
+    - formatting
+    - install
+    - chroot
+    - rootpw
+
+- name: Formatting BIOS boot partition...
+  become: yes
+  command: mkfs -t fat -F 32 {{ mbr_boot_partition }}
+  tags: formatting
+
+- name: Formatting EFI boot partition...
+  become: yes
+  command: mkfs -t fat -F 32 {{ efi_partition }}
+  tags: formatting
+
+- name: Formatting Linux boot partition...
+  become: yes
+  command: mkfs -t {{ disk_fs }} {{ linux_boot_partition }}
+  tags: formatting
+
+- name: Formatting Linux data partition...
+  become: yes
+  command: mkfs -t {{ disk_fs }} {{ root_partition }}
+  tags: formatting
+
+- name: Mounting root file system...
+  become: yes
+  mount:
+    name: "{{ root_partition_mnt }}"
+    src: "{{ root_partition }}"
+    fstype: "{{ disk_fs }}"
+    state: mounted
+  tags: formatting
+
+- name: Mounting /boot file system...
+  become: yes
+  mount:
+    name: "{{ linux_boot_partition_mnt }}"
+    src: "{{ linux_boot_partition }}"
+    fstype: "{{ disk_fs }}"
+    state: mounted
+  tags: formatting
+
+- name: Mounting /boot/EFI file system...
+  become: yes
+  mount:
+    name: "{{ efi_partition_mnt }}"
+    src: "{{ efi_partition }}"
+    fstype: vfat
+    state: mounted
+  tags: formatting
+
+- name: Installing base and base-devel system...
+  become: yes
+  command: pacstrap {{ root_partition_mnt }} base base-devel
+  tags: install
+
+- name: Generating fstab...
+  become: yes
+  shell: genfstab -U {{ root_partition_mnt }} > /mnt/etc/fstab
+  tags:
+    - install
+    - test
+
+- name: Enabling locales...
+  become: yes
+  lineinfile: dest={{ root_partition_mnt }}/etc/locale.gen state=present line={{ item }}
+  with_items:
+    - de_DE.UTF-8 UTF-8
+    - en_US.UTF-8 UTF-8
+  tags: install
+
+- name: Setting the default locale to en_US...
+  become: yes
+  lineinfile: dest={{ root_partition_mnt }}/etc/locale.conf state=present line={{ item }} create=yes
+  with_items:
+    - LANG=en_US.UTF-8
+  tags: install
+
+- name: Setting the default vconsole locale....
+  become: yes
+  lineinfile: dest={{ root_partition_mnt }}/etc/vconsole.conf state=present line="KEYMAP=us" create=yes
+  tags: install
+
+- name: Setting the hostname of the new computer...
+  become: yes
+  lineinfile: dest={{ root_partition_mnt }}/etc/hostname state=present line="{{ new_hostname }}" create=yes
+  tags: install
+
+- name: Setting the ip lookup for the new hostname...
+  become: yes
+  lineinfile: dest={{ root_partition_mnt }}/etc/hosts state=present line="127.0.0.1 {{ new_hostname }}.local {{ new_hostname }}" create=yes
+  tags: install
+
+- name: Setting time zone to Europe/Berlin and syncing hardware clock...
+  become: yes
+  command: arch-chroot {{ root_partition_mnt }} {{ item }}
+  with_items:
+    - rm -rf /etc/localtime
+    - ln -s /usr/share/zoneinfo/Europe/Berlin /etc/localtime
+    - hwclock --systohc
+  tags: chroot
+
+- name: Generating locale files...
+  become: yes
+  command: arch-chroot {{ root_partition_mnt }} {{ item }}
+  with_items:
+    - locale-gen
+  tags: chroot
+
+- name: Generating initial RAM disk...
+  become: yes
+  command: arch-chroot {{ root_partition_mnt }} mkinitcpio -p linux
+  tags: chroot
+
+- name: Installing core tools inside the newly installed system...
+  become: yes
+  command: arch-chroot {{ root_partition_mnt }} pacman -S {{ item }} --noconfirm
+  tags: chroot
+  with_items:
+    - ansible
+    - openssh
+    - grub
+    - efibootmgr
+    - netctl
+    - dialog
+    - wpa_supplicant
+    - htop
+    - ntp
+    - vim
+
+- name: Installing GRUB...
+  become: yes
+  command: arch-chroot {{ root_partition_mnt }} grub-install --target=x86_64-efi --efi-directory=/boot/EFI --bootloader-id=archlinux
+  tags: chroot
+
+- name: Generating grub.cfg...
+  become: yes
+  command: arch-chroot {{ root_partition_mnt }} grub-mkconfig -o /boot/grub/grub.cfg
+  tags: chroot
+
+- name: Enabling dhcpcd and ntpd...
+  become: yes
+  command: arch-chroot {{ root_partition_mnt }} systemctl enable {{ item }}
+  with_items:
+    - dhcpcd
+    - ntpd
+  tags: chroot
